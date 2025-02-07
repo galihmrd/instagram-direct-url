@@ -74,7 +74,7 @@ function isSidecar(requestData){
 async function instagramRequest(shortcode) {
     try{
         const BASE_URL = "https://www.instagram.com/graphql/query"
-        const INSTAGRAM_DOCUMENT_ID = "8845758582119845"
+        const INSTAGRAM_DOCUMENT_ID = "7673355509443291"
         let dataBody = qs.stringify({
             'variables': JSON.stringify({
                 'shortcode': shortcode,
