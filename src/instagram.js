@@ -71,10 +71,40 @@ function isSidecar(requestData){
     }
 }
 
+async function getCSRFToken(baseURL: string, data: string){
+     try {
+         let config : AxiosRequestConfig = {
+             method: 'post',
+             maxBodyLength: Infinity,
+             url: baseURL,
+             headers: {
+                 'Content-Type': 'application/x-www-form-urlencoded',
+             },
+             data
+         }
+ 
+         const token = await new Promise <string>((resolve, reject) => {
+             axios.request(config).catch((err) => {
+                 if (!err.response?.headers['set-cookie']) {
+                     reject(err)
+                 } else {
+                     const csrfCookie = err.response?.headers['set-cookie'][0]
+                     const csrfToken = csrfCookie.split(";")[0].replace("csrftoken=", '')
+                     resolve(csrfToken)
+                 }
+             })
+         })
+ 
+         return token
+     } catch(err: any) {
+         throw new Error(`Failed to obtain CSRF: ${err.message}`)
+     }
+}
+
 async function instagramRequest(shortcode) {
     try{
         const BASE_URL = "https://www.instagram.com/graphql/query"
-        const INSTAGRAM_DOCUMENT_ID = "8845758582119845"
+        const INSTAGRAM_DOCUMENT_ID = "9510064595728286"
         let dataBody = qs.stringify({
             'variables': JSON.stringify({
                 'shortcode': shortcode,
@@ -84,13 +114,16 @@ async function instagramRequest(shortcode) {
             }),
             'doc_id': INSTAGRAM_DOCUMENT_ID 
         });
+
+        const token = await getCSRFToken(BASE_URL, dataBody)
     
         let config = {
             method: 'post',
             maxBodyLength: Infinity,
             url: BASE_URL,
-            headers: { 
-                'Content-Type': 'application/x-www-form-urlencoded'
+            headers: {
+                 'X-CSRFToken': token,
+                 'Content-Type': 'application/x-www-form-urlencoded',
             },
             data : dataBody
         };
