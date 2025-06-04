@@ -2,7 +2,7 @@ const axios = require('axios')
 const qs = require('qs')
 
 
-async function checkRedirect(url){
+async function checkRedirect(url) {
     let split_url = url.split("/")
     if(split_url.includes("share")){
         let res = await axios.get(url)
@@ -11,16 +11,16 @@ async function checkRedirect(url){
     return url
 }
 
-function formatPostInfo(requestData){
+function formatPostInfo(requestData) {
     try{
         let mediaCapt = requestData.edge_media_to_caption.edges
         const capt = (mediaCapt.length === 0) ? "" : mediaCapt[0].node.text
         return {
             owner_username: requestData.owner.username,
-            owner_fullname: requestData.owner.full_name,
+            owner_fullname: requestData.owner.username,
             is_verified: requestData.owner.is_verified,
             is_private: requestData.owner.is_private,
-            likes: requestData.edge_media_preview_like.count,
+            likes: requestData.edge_liked_by.count,
             is_ad: requestData.is_ad,
             caption: capt
         }
@@ -29,8 +29,8 @@ function formatPostInfo(requestData){
     }
 }
 
-function formatMediaDetails(mediaData){
-    try{
+function formatMediaDetails(mediaData) {
+    try {
         if(mediaData.is_video){
             return {
                 type: "video",
@@ -63,58 +63,34 @@ function getShortcode(url){
     }
 }
 
-function isSidecar(requestData){
-    try{
-        return requestData["__typename"] == "XDTGraphSidecar"
-    } catch(err){
-        throw new Error(`Failed sidecar verification: ${err.message}`)
-    }
-}
-
 async function instagramRequest(shortcode) {
     try{
-        const BASE_URL = "https://www.instagram.com/graphql/query"
-        const INSTAGRAM_DOCUMENT_ID = "8845758582119845"
-        let dataBody = qs.stringify({
-            'variables': JSON.stringify({
-                'shortcode': shortcode,
-                'fetch_tagged_user_count': null,
-                'hoisted_comment_id': null,
-                'hoisted_reply_id': null
-            }),
-            'doc_id': INSTAGRAM_DOCUMENT_ID 
-        });
-    
-        let config = {
-            method: 'post',
-            maxBodyLength: Infinity,
-            url: BASE_URL,
-            headers: { 
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            data : dataBody
-        };
-    
-        const {data} = await axios.request(config)
-        if(!data.data?.xdt_shortcode_media) throw new Error("Only posts/reels supported, check if your link is valid.")
-        return data.data.xdt_shortcode_media
+        const embedUrl = `https://www.instagram.com/p/${shortcode}/embed/captioned`
+        const embedPattern = /new ServerJS\(\)\);s\.handle\(({.*?})\);requireLazy/;
+        const { data } = await axios.get(embedUrl)
+        const match = embedPattern.exec(data);
+        if (match) {
+            const jsonData = match[1];
+            const result = JSON.parse(jsonData);
+            const data = JSON.parse(result.require[1][3][0]["contextJSON"]).context.media
+            return data
+        }
     } catch(err){
         throw new Error(`Failed instagram request: ${err.message}`)
     }
 }
 
-function createOutputData(requestData){
-    try{
+function createOutputData(requestData) {
+    try {
         let url_list = [], media_details = []
-        const IS_SIDECAR = isSidecar(requestData)
-        if(IS_SIDECAR){
+        if (requestData.__typename == "GraphSidecar") {
             //Post with sidecar
             requestData.edge_sidecar_to_children.edges.forEach((media)=>{
                 media_details.push(formatMediaDetails(media.node))
                 if(media.node.is_video){ //Sidecar video item
                     url_list.push(media.node.video_url)
-                } else { //Sidecar image item
-                    url_list.push(media.node.display_url)
+                } else {
+                    url_list.push(requestData.display_url)
                 }
             })
         } else {
@@ -126,14 +102,13 @@ function createOutputData(requestData){
                 url_list.push(requestData.display_url)
             }
         }
-
         return {
             results_number: url_list.length,
             url_list,
             post_info: formatPostInfo(requestData),
             media_details
         }
-    } catch(err){
+    } catch(err) {
         throw new Error(`Failed to create output data: ${err.message}`)
     }
 }
